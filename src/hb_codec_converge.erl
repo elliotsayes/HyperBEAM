@@ -2,7 +2,7 @@
 %%% main Converge format, which features rich types with deterministic encoding
 %%% built around the HTTP Structured Fields (RFC-9651) specification.
 -module(hb_codec_converge).
--export([to/1, from/1]).
+-export([to/1, to_tab/2, from/1]).
 -export([decode_value/2, encode_value/1]).
 -include("include/hb.hrl").
 -include_lib("eunit/include/eunit.hrl").
@@ -14,26 +14,8 @@ from(Msg) when is_map(Msg) ->
         lists:map(
             fun(Key) ->
                 case maps:find(Key, Msg) of
-                    {ok, <<>>} ->
-                        BinKey = hb_converge:key_to_binary(Key),
-                        {<<"Converge-Type:", BinKey/binary>>, <<"Empty-Binary">>};
-                    {ok, Value} when is_binary(Value) ->
-                        {Key, Value};
-                    {ok, Map} when is_map(Map) ->
-                        {Key, from(Map)};
-                    {ok, []} ->
-                        BinKey = hb_converge:key_to_binary(Key),
-                        {<<"Converge-Type:", BinKey/binary>>, <<"Empty-List">>};
-                    {ok, Value} when
-                            is_atom(Value) or is_integer(Value)
-                            or is_list(Value) ->
-                        ItemKey = hb_converge:key_to_binary(Key),
-                        {Type, BinaryValue} = encode_value(Value),
-                        [
-                            {<<"Converge-Type:", ItemKey/binary>>, Type},
-                            {ItemKey, BinaryValue}
-                        ];
-                    {ok, _} -> []
+                    {ok, Map} when is_map(Map) -> {Key, from(Map)};
+                    {ok, Value} -> to_tab(Key, Value)
                 end
             end,
             lists:filter(
@@ -93,6 +75,23 @@ to(TABM0) ->
         end,
         TABM1
     )).
+
+to_tab(Key, <<>>) ->
+    BinKey = hb_converge:key_to_binary(Key),
+    [{<<"Converge-Type:", BinKey/binary>>, <<"Empty-Binary">>}];
+to_tab(Key, Value) when is_binary(Value) ->
+    [{Key, Value}];
+to_tab(Key, []) ->
+    BinKey = hb_converge:key_to_binary(Key),
+    [{<<"Converge-Type:", BinKey/binary>>, <<"Empty-List">>}];
+to_tab(Key, Value) when is_atom(Value) or is_integer(Value) or is_list(Value) ->
+    ItemKey = hb_converge:key_to_binary(Key),
+    {Type, BinaryValue} = encode_value(Value),
+    [
+        {<<"Converge-Type:", ItemKey/binary>>, Type},
+        {ItemKey, BinaryValue}
+    ];
+to_tab(_Key, _Value) -> [].
 
 %% @doc Convert a term to a binary representation, emitting its type for
 %% serialization as a separate tag.
